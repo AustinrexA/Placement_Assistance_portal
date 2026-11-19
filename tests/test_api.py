@@ -111,15 +111,37 @@ class JobPortalAPITests(unittest.TestCase):
         self.assertEqual(data["pagination"]["total_pages"], 3)
         self.assertEqual(mock_fetch_all.call_args[0][1][-2:], (10, 10))
 
-    @patch("app.fetch_all", side_effect=[[{"value": "Python Developer"}], [{"value": "0-2 years"}], [{"value": "Chennai"}]])
+    @patch("app.fetch_all", side_effect=[
+        [{"value": "Software Development & Engineering", "job_count": 20}],
+        [{"value": "Python Developer", "job_count": 4}],
+        [{"value": "0-2 years", "job_count": 3}],
+        [{"value": "Chennai", "job_count": 8}],
+        [{"value": "active", "job_count": 18}],
+    ])
     def test_filter_options_return_dependent_facets(self, mock_fetch_all):
-        response = self.client.get("/api/filter-options?location=Chennai&source_ids=1")
+        response = self.client.get(
+            "/api/filter-options?job_family=Software+Development+%26+Engineering&location=Chennai&source_ids=1"
+        )
         self.assertEqual(response.status_code, 200)
         data = response.get_json()
-        self.assertIn("Python Developer", data["roles"])
-        self.assertIn("0-2 years", data["experiences"])
+        self.assertEqual(data["families"][0]["value"], "Software Development & Engineering")
+        self.assertEqual(data["roles"][0]["value"], "Python Developer")
+        self.assertIn("0–2 Years", data["experiences"])
         self.assertIn("Chennai", data["locations"])
-        self.assertEqual(mock_fetch_all.call_count, 3)
+        self.assertEqual(data["statuses"][0]["value"], "active")
+        self.assertEqual(mock_fetch_all.call_count, 5)
+
+    @patch("app.fetch_all", return_value=SAMPLE_JOBS[:1])
+    @patch("app.fetch_one", return_value={"total": 1})
+    def test_job_listing_filters_by_family_and_exact_title(self, mock_fetch_one, mock_fetch_all):
+        response = self.client.get(
+            "/api/jobs?job_family=Software+Development+%26+Engineering&role=Python+Developer"
+        )
+        self.assertEqual(response.status_code, 200)
+        sql, params = mock_fetch_one.call_args[0]
+        self.assertIn("job_title_family_map", sql)
+        self.assertIn("Python Developer", params)
+        self.assertIn("Software Development & Engineering", params)
 
 
 if __name__ == "__main__":

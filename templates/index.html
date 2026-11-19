@@ -216,13 +216,22 @@
 
                         <div class="filter-toolbar">
 
+                            <div class="filter-field job-family-filter-field">
+                                <label for="jobFamilyInput">Job Family</label>
+                                <div class="location-input-wrap generic-filter-wrap" data-filter="family">
+                                    <input type="text" id="jobFamilyInput" placeholder="Select Job Family" autocomplete="off" aria-autocomplete="list" aria-controls="jobFamilyFilterOptions" aria-expanded="false" role="combobox">
+                                    <button type="button" class="location-dropdown-toggle" id="jobFamilyDropdownToggle" aria-label="Show job families" aria-expanded="false">▾</button>
+                                    <div class="location-options generic-filter-options" id="jobFamilyFilterOptions" role="listbox" hidden></div>
+                                </div>
+                            </div>
+
                             <div class="filter-field keyword-field">
                                 <label for="searchInput">Job Title</label>
                                 <div class="location-input-wrap generic-filter-wrap" data-filter="role">
-<input type="text" id="searchInput" placeholder="Select Job" autocomplete="off" aria-autocomplete="list" aria-controls="roleFilterOptions" aria-expanded="false" role="combobox">
-<button type="button" class="location-dropdown-toggle" id="roleDropdownToggle" aria-label="Show available jobs" aria-expanded="false">▾</button>
-<div class="location-options generic-filter-options" id="roleFilterOptions" role="listbox" hidden></div>
-</div>
+                                    <input type="text" id="searchInput" placeholder="Select Job Family first" autocomplete="off" disabled aria-autocomplete="list" aria-controls="roleFilterOptions" aria-expanded="false" role="combobox">
+                                    <button type="button" class="location-dropdown-toggle" id="roleDropdownToggle" aria-label="Show job titles" aria-expanded="false" disabled>▾</button>
+                                    <div class="location-options generic-filter-options" id="roleFilterOptions" role="listbox" hidden></div>
+                                </div>
                             </div>
 
                             <div class="filter-field company-main-filter">

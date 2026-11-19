@@ -23,10 +23,13 @@ const state = {
   companies: [],
   careerSources: [],
   selectedCareerSourceIds: new Set(),
+  familyOptions: [],
   roleOptions: [],
   experienceOptions: [],
+  statusOptions: [],
   locations: [],
   filters: {
+    job_family: "",
     role: "",
     location: "",
     experience: "",
@@ -56,6 +59,9 @@ const elements = {
   reportsPage: document.getElementById("reportsPage"),
   pageTitle: document.getElementById("pageTitle"),
   filterForm: document.getElementById("filterForm"),
+  jobFamilyInput: document.getElementById("jobFamilyInput"),
+  jobFamilyDropdownToggle: document.getElementById("jobFamilyDropdownToggle"),
+  jobFamilyOptions: document.getElementById("jobFamilyFilterOptions"),
   searchInput: document.getElementById("searchInput"),
   locationInput: document.getElementById("locationInput"),
   locationDropdownToggle: document.getElementById("locationDropdownToggle"),
@@ -155,6 +161,10 @@ function buildJobsURL() {
   params.set("page", state.page);
   params.set("per_page", state.perPage);
   params.set("source_ids", getSelectedSourceIds().join(","));
+
+  if (state.filters.job_family) {
+    params.set("job_family", state.filters.job_family);
+  }
 
   const selectedRole = (state.filters.role || "").trim();
 
@@ -706,10 +716,13 @@ function buildFacetParams(exclude = "") {
   const salaryBand = elements.salaryFilterInput?.dataset.salaryValue || salaryLabel;
   const salaryParts = salaryBand ? salaryBand.split("-") : [];
   const values = {
-    role: elements.searchInput.value.trim(),
+    job_family: state.filters.job_family || "",
+    role: state.filters.role || "",
     location: elements.locationInput.value.trim(),
     experience: elements.experienceInput.value.trim(),
     company: elements.companyInput ? elements.companyInput.value.trim() : "",
+    skills: elements.skillsInput ? elements.skillsInput.value.trim() : "",
+    status: elements.statusFilter ? elements.statusFilter.value : "",
     posted_after: elements.postedDateInput ? elements.postedDateInput.value : "",
     source_ids: getSelectedSourceIds().join(","),
     salary_min: salaryParts[0] || "",
@@ -729,105 +742,267 @@ function buildFacetParams(exclude = "") {
 
 async function loadSalaryFilterOptions() {
   if (!elements.salaryFilterInput) return;
-  const fixedBands = [
-    { label: "Up to ₹3 LPA", value: "0-300000" },
-    { label: "₹3–5 LPA", value: "300000-500000" },
-    { label: "₹5–8 LPA", value: "500000-800000" },
-    { label: "₹8–12 LPA", value: "800000-1200000" },
-    { label: "₹12–20 LPA", value: "1200000-2000000" },
-    { label: "₹20 LPA+", value: "2000000-" },
-  ];
-  state.salaryOptions = fixedBands;
-  renderGenericOptions("salary", fixedBands.map(b => b.label), fixedBands.map(b => b.value));
-  const selected = fixedBands.find(b => b.value === (elements.salaryFilterInput.dataset.salaryValue || ""));
-  if (selected) elements.salaryFilterInput.value = selected.label;
+  try {
+    const result = await apiGet(
+      `${API.salaryOptions}?${buildFacetParams("salary").toString()}`,
+    );
+    state.salaryOptions = Array.isArray(result.data) ? result.data : [];
+    renderGenericOptions("salary", state.salaryOptions);
+    const selected = state.salaryOptions.find(
+      (band) => band.value === (elements.salaryFilterInput.dataset.salaryValue || ""),
+    );
+    if (selected) {
+      elements.salaryFilterInput.value = selected.label;
+    } else if (elements.salaryFilterInput.dataset.salaryValue) {
+      elements.salaryFilterInput.value = "";
+      elements.salaryFilterInput.dataset.salaryValue = "";
+      state.filters.salary_min = "";
+      state.filters.salary_max = "";
+    }
+  } catch (error) {
+    console.error("Unable to load salary filter options:", error);
+    showNotification("Unable to update salary options.", true);
+  }
 }
 
 
 const genericFilterMap = {
+  family: { input: elements.jobFamilyInput, options: elements.jobFamilyOptions, toggle: elements.jobFamilyDropdownToggle },
   role: { input: elements.searchInput, options: document.getElementById("roleFilterOptions"), toggle: document.getElementById("roleDropdownToggle") },
   company: { input: elements.companyInput, options: document.getElementById("companyFilterOptions"), toggle: document.getElementById("companyDropdownToggle") },
   experience: { input: elements.experienceInput, options: document.getElementById("experienceFilterOptions"), toggle: document.getElementById("experienceDropdownToggle") },
   salary: { input: elements.salaryFilterInput, options: document.getElementById("salaryFilterOptions"), toggle: document.getElementById("salaryDropdownToggle") },
 };
-function canonicalJobRole(title) {
-  const t = String(title || "").toLowerCase().replace(/[._]/g, " ").replace(/\s+/g, " ").trim();
-  if (!t) return "";
-  if (/\b(data scientist|data science)\b/.test(t)) return "Data Scientist";
-  if (/\b(data analyst|business analyst|business intelligence)\b/.test(t)) return "Data Analyst";
-  if (/\b(full.?stack|full stack)\b/.test(t)) return "Full Stack Developer";
-  if (/\b(front.?end|frontend)\b/.test(t)) return "Frontend Developer";
-  if (/\b(back.?end|backend)\b/.test(t)) return "Backend Developer";
-  if (/\b(java)\b/.test(t) && /\b(developer|engineer)\b/.test(t)) return "Java Developer";
-  if (/\b(python)\b/.test(t) && /\b(developer|engineer)\b/.test(t)) return "Python Developer";
-  if (/\b(dotnet|\.net|c sharp|c#)\b/.test(t) && /\b(developer|engineer)\b/.test(t)) return ".NET Developer";
-  if (/\b(software developer|application developer|programmer)\b/.test(t)) return "Software Developer";
-  if (/\bsoftware engineer\b/.test(t)) return "Software Engineer";
-  if (/\b(qa|quality assurance|sdet|test engineer|tester)\b/.test(t)) return "QA / Test Engineer";
-  if (/\b(devops|site reliability)\b/.test(t)) return "DevOps Engineer";
-  if (/\b(cloud engineer|cloud developer)\b/.test(t)) return "Cloud Engineer";
-  if (/\b(ui.?ux|ux designer|ui designer)\b/.test(t)) return "UI / UX Designer";
-  if (/\b(technical support|support engineer|it support)\b/.test(t)) return "IT Support Engineer";
-  if (/\b(intern|internship)\b/.test(t)) return "Intern";
-  return String(title).trim();
+
+const REFERENCE_ROLE_GROUPS = {
+  "Software Development & Engineering": [
+    "Software Developer", "Software Engineer", "Java Developer", "Python Developer",
+    "Full Stack Developer", "Backend Developer", "Frontend Developer", ".NET Developer",
+    "PHP Developer", "Mobile App Developer", "Web Developer", "Spring Boot Developer"
+  ],
+  "Data, Analytics & Artificial Intelligence": [
+    "Data Analyst", "Data Scientist", "Data Engineer", "Business Intelligence Developer",
+    "Power BI Developer", "Machine Learning Engineer", "AI Engineer",
+    "NLP / Computer Vision Engineer", "Data Architect"
+  ],
+  "IT Infrastructure, Cloud & Cybersecurity": [
+    "DevOps Engineer", "Cloud Engineer", "Cloud Architect", "Site Reliability Engineer",
+    "System Administrator", "Network Engineer", "Cybersecurity Analyst", "Security Engineer",
+    "Infrastructure Engineer", "Database Administrator", "IT Support Engineer"
+  ],
+  "Testing & Quality Assurance": ["QA Engineer", "Manual Tester", "Automation Tester", "Performance Tester"],
+  "Human Resources & Talent Management": [
+    "HR Executive", "HR Manager", "HR Generalist", "Talent Acquisition Specialist",
+    "HR Business Partner", "Payroll Executive"
+  ],
+  "Sales, Marketing & Business Development": [
+    "Sales Executive", "Sales Manager", "Business Development Executive",
+    "Digital Marketing Specialist", "Marketing Analyst", "Account Manager"
+  ],
+  "Finance, Accounting & Banking": [
+    "Accountant", "Financial Analyst", "Accounts Payable / Receivable", "Auditor",
+    "Tax Analyst", "Banking Associate"
+  ],
+  "Business Management & Administration": [
+    "Project Manager", "Program Manager", "Product Manager", "Operations Manager",
+    "Business Analyst", "Management Consultant", "Project Coordinator", "Administrative Executive"
+  ],
+  "Business Management, Consulting & Administration": [
+    "Project Manager", "Program Manager", "Product Manager", "Operations Manager",
+    "Business Analyst", "Management Consultant", "Project Coordinator", "Administrative Executive"
+  ],
+  "Design, Creative & Content": [
+    "UI/UX Designer", "Graphic Designer", "Product Designer", "Web Designer", "Content Writer", "Video Editor"
+  ],
+  "Customer Support, Service & Operations": [
+    "Customer Support Executive", "Customer Success Manager", "Technical Support Engineer",
+    "Service Desk Analyst", "Operations Executive"
+  ]
+};
+
+function normalizeRoleLabel(value) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
-function renderGenericOptions(type, values, rawValues = []) {
-  const cfg = genericFilterMap[type]; if (!cfg) return;
-  const query = cfg.input.value.trim().toLowerCase();
-  const filtered = values.filter(v => !query || String(v).toLowerCase().includes(query));
-  cfg.options.innerHTML = filtered.length ? filtered.map(v => {
-    const idx = values.indexOf(v); const raw = rawValues[idx] || v;
-    return `<button type="button" class="location-option generic-option" role="option" data-generic-value="${escapeHTML(v)}" data-generic-raw="${escapeHTML(raw)}">${escapeHTML(v)}</button>`;
-  }).join("") : '<div class="location-options-message">No matching options</div>';
+
+function genericOptionsFor(type) {
+  if (type === "family") {
+    return [{ value: "", label: "All Job Families", special: true }, ...(state.familyOptions || [])];
+  }
+  if (type === "role") {
+    if (!state.filters.job_family) return [];
+    const roles = state.roleOptions || [];
+    const roleByName = new Map(roles.map((item) => [normalizeRoleLabel(item.value ?? item.label), item]));
+    const family = String(state.filters.job_family || "").trim();
+    const names = REFERENCE_ROLE_GROUPS[family];
+    const orderedRoles = names
+      ? names.map((name) => {
+          const found = roleByName.get(normalizeRoleLabel(name));
+          return { value: found?.value ?? name, label: name, job_count: Number(found?.job_count ?? found?.count ?? 0) };
+        })
+      : roles;
+    const total = orderedRoles.reduce((sum, item) => sum + Number(item.job_count ?? item.count ?? 0), 0);
+    const familyLabel = family === "Business Management, Consulting & Administration" ? "Business Management & Administration" : family;
+    return [
+      { value: "__ALL_IN_FAMILY__", label: `All ${familyLabel} Roles`, job_count: total, special: true },
+      ...orderedRoles,
+    ];
+  }
+  if (type === "experience") return state.experienceOptions || [];
+  if (type === "company") return state.companyOptions || [];
+  if (type === "salary") return state.salaryOptions || [];
+  return [];
 }
+
+function renderGenericOptions(type, values = genericOptionsFor(type), rawValues = []) {
+  const cfg = genericFilterMap[type];
+  if (!cfg || !cfg.options) return;
+  const committedValue = type === "family"
+    ? state.filters.job_family
+    : type === "role"
+      ? (elements.searchInput.dataset.allFamily === "true" ? "All jobs in this family" : state.filters.role)
+      : type === "experience"
+        ? state.filters.experience
+        : type === "company"
+          ? state.filters.company
+          : type === "salary"
+            ? (state.salaryOptions || []).find((item) => item.value === elements.salaryFilterInput.dataset.salaryValue)?.label
+            : "";
+  const query = committedValue && cfg.input.value.trim() === committedValue
+    ? ""
+    : cfg.input.value.trim().toLowerCase();
+  const normalized = (values || []).map((item, index) => {
+    if (item && typeof item === "object") {
+      return {
+        value: String(item.value ?? item.label ?? ""),
+        label: String(item.label ?? item.value ?? ""),
+        count: item.job_count ?? item.count,
+        raw: item.raw_value ?? item.value ?? rawValues[index] ?? item.label ?? "",
+        special: Boolean(item.special),
+      };
+    }
+    return {
+      value: String(item ?? ""),
+      label: String(item ?? ""),
+      count: null,
+      raw: rawValues[index] ?? item,
+      special: false,
+    };
+  }).filter((item) => item.value || item.label);
+  const filtered = normalized.filter((item) =>
+    !query || item.label.toLowerCase().includes(query) || item.value.toLowerCase().includes(query)
+  );
+  cfg.options.innerHTML = filtered.length ? filtered.map((item) => `
+    <button type="button" class="location-option generic-option${item.special ? " generic-option-all" : ""}"
+      role="option" data-generic-value="${escapeHTML(item.value)}"
+      data-generic-raw="${escapeHTML(item.raw)}" data-generic-label="${escapeHTML(item.label)}">
+      <span>${escapeHTML(item.label)}${item.count !== null && item.count !== undefined ? ` (${Number(item.count).toLocaleString("en-IN")})` : ""}</span>
+    </button>
+  `).join("") : '<div class="location-options-message">No matching options</div>';
+}
+
 function openGenericOptions(type) {
-  const cfg = genericFilterMap[type]; if (!cfg) return;
-  const all = type === "role" ? state.roleOptions : type === "experience" ? state.experienceOptions : type === "company" ? state.companyOptions || [] : type === "salary" ? (state.salaryOptions || []).map(b => b.label) : [];
-  renderGenericOptions(type, all);
-  cfg.options.hidden = false; cfg.input.setAttribute("aria-expanded","true"); cfg.toggle.setAttribute("aria-expanded","true");
+  const cfg = genericFilterMap[type];
+  if (!cfg) return;
+  if (type === "role" && !state.filters.job_family) return;
+  renderGenericOptions(type);
+  cfg.options.hidden = false;
+  cfg.input.setAttribute("aria-expanded", "true");
+  cfg.toggle.setAttribute("aria-expanded", "true");
 }
+
 function closeGenericOptions(type) {
-  const cfg=genericFilterMap[type]; if(!cfg)return;
-  cfg.options.hidden=true; cfg.input.setAttribute("aria-expanded","false"); cfg.toggle.setAttribute("aria-expanded","false");
+  const cfg = genericFilterMap[type];
+  if (!cfg) return;
+  cfg.options.hidden = true;
+  cfg.input.setAttribute("aria-expanded", "false");
+  cfg.toggle.setAttribute("aria-expanded", "false");
 }
 
 async function loadFilterOptions() {
-  const previousRole = elements.searchInput.value;
-  const previousExperience = elements.experienceInput.value;
+  const previousFamily = state.filters.job_family || "";
+  const previousRole = state.filters.role || "";
+  const previousAllFamily = elements.searchInput.dataset.allFamily === "true";
+  const previousExperience = state.filters.experience || elements.experienceInput.value;
   try {
     const result = await apiGet(
       `/api/filter-options?${buildFacetParams().toString()}`,
     );
-    state.roleOptions = [...new Set((Array.isArray(result.roles) ? result.roles : [])
-      .map(canonicalJobRole).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+
+    state.familyOptions = Array.isArray(result.families) ? result.families : [];
+    const familyStillAvailable = !previousFamily || state.familyOptions.some(
+      (item) => String(item.value) === previousFamily,
+    );
+    if (previousFamily && !familyStillAvailable) {
+      state.filters.job_family = "";
+      state.filters.role = "";
+      elements.jobFamilyInput.value = "";
+      elements.searchInput.value = "";
+      elements.searchInput.dataset.allFamily = "false";
+    } else {
+      state.filters.job_family = previousFamily;
+      elements.jobFamilyInput.value = previousFamily;
+    }
+
+    state.roleOptions = Array.isArray(result.roles) ? result.roles : [];
+    const roleStillAvailable = !previousRole || state.roleOptions.some(
+      (item) => String(item.value) === previousRole,
+    );
+    if (previousRole && !roleStillAvailable) {
+      state.filters.role = "";
+      elements.searchInput.value = "";
+      elements.searchInput.dataset.allFamily = "false";
+    } else if (previousAllFamily && state.filters.job_family) {
+      state.filters.role = "";
+      elements.searchInput.value = "All jobs in this family";
+      elements.searchInput.dataset.allFamily = "true";
+    } else {
+      state.filters.role = previousRole;
+      elements.searchInput.value = previousRole;
+      elements.searchInput.dataset.allFamily = "false";
+    }
+
+    elements.searchInput.disabled = !state.filters.job_family;
+    elements.genericRoleToggleDisabled = !state.filters.job_family;
+    if (elements.genericRoleToggleDisabled) {
+      elements.searchInput.placeholder = "Select Job Family first";
+      genericFilterMap.role.toggle.disabled = true;
+    } else {
+      elements.searchInput.placeholder = "Select Job Title";
+      genericFilterMap.role.toggle.disabled = false;
+    }
+
+    renderGenericOptions("family", state.familyOptions);
+    renderGenericOptions("role", genericOptionsFor("role"));
+
     state.experienceOptions = Array.isArray(result.experiences)
-      ? result.experiences
+      ? result.experiences.map((item) => typeof item === "string" ? item : item.value).filter(Boolean)
       : [];
-    // /api/filter-options already returns locations using the same dependent
-    // filters as /api/locations. Reuse that result instead of issuing a second
-    // database request on every initial load/filter change.
+    const experienceStillAvailable = !previousExperience || state.experienceOptions.includes(previousExperience);
+    elements.experienceInput.value = experienceStillAvailable ? previousExperience : "";
+    state.filters.experience = elements.experienceInput.value;
+    renderGenericOptions("experience", state.experienceOptions);
+
+    const previousStatus = state.filters.status || elements.statusFilter.value;
+    state.statusOptions = Array.isArray(result.statuses) ? result.statuses : [];
+    elements.statusFilter.innerHTML = '<option value="">All statuses</option>' +
+      state.statusOptions.map((item) => {
+        const value = String(item.value || "").toLowerCase();
+        const label = value ? value.charAt(0).toUpperCase() + value.slice(1) : "";
+        return value ? `<option value="${escapeHTML(value)}">${escapeHTML(label)} (${Number(item.job_count || 0).toLocaleString("en-IN")})</option>` : "";
+      }).join("");
+    const statusStillAvailable = !previousStatus || state.statusOptions.some(
+      (item) => String(item.value).toLowerCase() === previousStatus.toLowerCase(),
+    );
+    elements.statusFilter.value = statusStillAvailable ? previousStatus : "";
+    state.filters.status = elements.statusFilter.value;
+
     state.locations = extractLocationOptions(
       Array.isArray(result.locations) ? result.locations : [],
     );
     renderLocationOptions();
-
-    renderGenericOptions("role", state.roleOptions);
-    // Keep the active role selection stable while dependent facets refresh.
-    // The role list excludes its own facet, so it may temporarily omit a
-    // selected role when other filters narrow the result set.
-    elements.searchInput.value = previousRole ? canonicalJobRole(previousRole) : "";
-    state.filters.role = elements.searchInput.value;
-
-    renderGenericOptions("experience", state.experienceOptions);
-    elements.experienceInput.value = state.experienceOptions.includes(
-      previousExperience,
-    )
-      ? previousExperience
-      : "";
-    state.filters.experience = elements.experienceInput.value;
   } catch (error) {
     console.error("Unable to load filter options:", error);
-    showNotification("Unable to update role and experience options.", true);
+    showNotification("Unable to update job-family, title, location and experience options.", true);
   }
 }
 
@@ -1042,13 +1217,18 @@ async function loadCompanyFilterOptions() {
       `${API.companies}?${buildFacetParams("company").toString()}`,
     );
     const companies = Array.isArray(result.data)
-      ? result.data.map((item) => String(item.name || "").trim()).filter(Boolean)
+      ? result.data
+          .map((item) => ({
+            value: String(item.name || "").trim(),
+            job_count: Number(item.job_count || 0),
+          }))
+          .filter((item) => item.value)
       : [];
-    state.companyOptions = [...new Set(companies)].sort((a, b) => a.localeCompare(b));
+    state.companyOptions = companies.sort((a, b) => a.value.localeCompare(b.value));
     renderGenericOptions("company", state.companyOptions);
     // Never erase an exact selection merely because the refreshed facet list
     // is temporarily different or filtered by another facet.
-    const chosen = selected || (state.companyOptions.includes(previous) ? previous : "");
+    const chosen = selected || (state.companyOptions.some((item) => item.value === previous) ? previous : "");
     elements.companyInput.value = chosen;
     state.filters.company = chosen;
   } catch (error) {
@@ -1073,7 +1253,10 @@ function closeLocationOptions() {
   elements.locationDropdownToggle.setAttribute("aria-expanded", "false");
 }
 async function applyFilters() {
-  state.filters.role = elements.searchInput.value.trim();
+  state.filters.job_family = state.filters.job_family || "";
+  state.filters.role = elements.searchInput.dataset.allFamily === "true"
+    ? ""
+    : (state.filters.role || "");
   state.filters.location = elements.locationInput.value.trim();
   state.filters.experience = elements.experienceInput.value.trim();
   state.filters.company = elements.companyInput.value.trim();
@@ -1100,10 +1283,19 @@ async function applyFilters() {
 
 function clearFilters() {
   elements.filterForm.reset();
-  if (elements.salaryFilterInput) elements.salaryFilterInput.value = "";
+  if (elements.salaryFilterInput) {
+    elements.salaryFilterInput.value = "";
+    elements.salaryFilterInput.dataset.salaryValue = "";
+  }
+  elements.jobFamilyInput.value = "";
+  elements.searchInput.value = "";
+  elements.searchInput.dataset.allFamily = "false";
+  elements.searchInput.disabled = true;
+  genericFilterMap.role.toggle.disabled = true;
   closeLocationOptions();
 
   state.filters = {
+    job_family: "",
     role: "",
     location: "",
     experience: "",
@@ -1871,44 +2063,77 @@ elements.sourceOptions.addEventListener("change", async (event) => {
 /* Consistent searchable dropdown controls styled exactly like Location */
 Object.entries(genericFilterMap).forEach(([type,cfg]) => {
   cfg.toggle.addEventListener("click", () => {
+    if (cfg.input.disabled) return;
     if (cfg.options.hidden) { openGenericOptions(type); cfg.input.focus(); }
     else closeGenericOptions(type);
   });
   cfg.input.addEventListener("focus", () => openGenericOptions(type));
   cfg.input.addEventListener("input", () => {
-    const values = type === "role" ? state.roleOptions : type === "experience" ? state.experienceOptions : type === "company" ? state.companyOptions || [] : [];
-    renderGenericOptions(type, values);
+    if (type === "role") {
+      elements.searchInput.dataset.allFamily = "false";
+      state.filters.role = "";
+    }
+    renderGenericOptions(type, genericOptionsFor(type));
     cfg.options.hidden = false;
   });
   cfg.options.addEventListener("click", async (event) => {
-    const option=event.target.closest("[data-generic-value]"); if(!option)return;
+    const option = event.target.closest("[data-generic-value]");
+    if (!option) return;
     const selectedValue = option.dataset.genericValue;
-    cfg.input.value = selectedValue;
+    const selectedLabel = option.dataset.genericLabel || selectedValue;
+
+    if (type === "family") {
+      state.filters.job_family = selectedValue;
+      state.filters.role = "";
+      elements.jobFamilyInput.value = selectedLabel;
+      elements.searchInput.value = "";
+      elements.searchInput.dataset.allFamily = "false";
+      closeGenericOptions("family");
+      state.page = 1;
+      state.excludedJobs.clear();
+      await applyFilters();
+      await Promise.all([loadFilterOptions(), loadCompanyFilterOptions(), loadSalaryFilterOptions()]);
+      return;
+    }
+
+    if (type === "role") {
+      if (selectedValue === "__ALL_IN_FAMILY__") {
+        state.filters.role = "";
+        elements.searchInput.value = "All jobs in this family";
+        elements.searchInput.dataset.allFamily = "true";
+      } else {
+        state.filters.role = selectedValue;
+        elements.searchInput.value = selectedValue;
+        elements.searchInput.dataset.allFamily = "false";
+      }
+      closeGenericOptions("role");
+      state.page = 1;
+      state.excludedJobs.clear();
+      await applyFilters();
+      await Promise.all([loadFilterOptions(), loadCompanyFilterOptions(), loadSalaryFilterOptions()]);
+      return;
+    }
+
+    cfg.input.value = selectedLabel;
     closeGenericOptions(type);
     if (type === "company") {
-      // Commit the exact clicked company (not the autocomplete query) as the active filter.
       state.filters.company = selectedValue;
       elements.companyInput.value = selectedValue;
       state.page = 1;
       state.excludedJobs.clear();
-      await Promise.all([loadFilterOptions(), loadSalaryFilterOptions()]);
-      // Refresh company suggestions without allowing it to clear the committed value.
-      await loadCompanyFilterOptions();
-      state.filters.company = selectedValue;
-      elements.companyInput.value = selectedValue;
-      await loadJobs();
+      await applyFilters();
+      await Promise.all([loadFilterOptions(), loadCompanyFilterOptions(), loadSalaryFilterOptions()]);
       return;
     }
-    if(type==="salary") {
-      const labels=[...document.querySelectorAll("#salaryFilterOptions .generic-option")];
-      // map selected label to underlying band in currently loaded bands
-      const bands=["0-300000","300000-500000","500000-800000","800000-1200000","1200000-2000000","2000000-"];
-      const labelMap={"Up to ₹3 LPA":bands[0],"₹3–5 LPA":bands[1],"₹5–8 LPA":bands[2],"₹8–12 LPA":bands[3],"₹12–20 LPA":bands[4],"₹20 LPA+":bands[5],"₹20 LPA and above":bands[5]};
-      cfg.input.dataset.salaryValue=labelMap[cfg.input.value]||"";
+    if (type === "salary") {
+      cfg.input.dataset.salaryValue = option.dataset.genericRaw || "";
+    }
+    if (type === "experience") {
+      state.filters.experience = selectedValue;
     }
     state.page = 1;
     state.excludedJobs.clear();
-    await applyFilters(); // load filtered jobs before refreshing dependent facets
+    await applyFilters();
     await Promise.all([loadFilterOptions(), loadCompanyFilterOptions(), loadSalaryFilterOptions()]);
   });
 });

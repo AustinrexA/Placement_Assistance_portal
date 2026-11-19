@@ -4161,3 +4161,371 @@ body[data-user-role="user"] .admin-job-link-column { display: none !important; }
 #reportsPage input[type="date"]::-webkit-datetime-edit {
     padding-right: 0;
 }
+
+/* V4Career: paired Job Family + Job Title dynamic filters */
+.job-family-filter-field,
+.keyword-field {
+    flex: 1.35 1 170px;
+    min-width: 150px;
+}
+.job-family-filter-field .location-input-wrap,
+.keyword-field .location-input-wrap {
+    width: 100%;
+}
+.filter-option-count {
+    float: right;
+    margin-left: 10px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    color: #29435e;
+    background: #eef2f6;
+    font-size: 11px;
+    font-weight: 650;
+    white-space: nowrap;
+}
+.generic-option {
+    display: flex !important;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+.generic-option-all {
+    color: #b84c08 !important;
+    background: #fff2e8 !important;
+    font-weight: 650;
+}
+.generic-option-all:hover {
+    background: #ffe7d3 !important;
+}
+.generic-filter-wrap input:disabled {
+    color: #98a4b2;
+    background: #f5f7f9;
+    cursor: not-allowed;
+}
+.generic-filter-wrap .location-dropdown-toggle:disabled {
+    color: #aab4bf;
+    background: #f5f7f9;
+    cursor: not-allowed;
+}
+@media (max-width: 1100px) {
+    .job-family-filter-field,
+    .keyword-field {
+        flex: 1 1 190px;
+    }
+}
+
+/* Fix Job Family dropdown width and text wrapping */
+.job-family-filter-field .generic-filter-options {
+    width: 420px;
+    min-width: 360px;
+    max-width: min(420px, calc(100vw - 32px));
+    right: auto;
+    left: 0;
+    box-sizing: border-box;
+}
+
+.job-family-filter-field .generic-option {
+    display: flex !important;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    min-width: 0;
+    white-space: nowrap;
+    padding: 11px 14px;
+}
+
+.job-family-filter-field .generic-option > span:first-child {
+    flex: 1 1 auto;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.job-family-filter-field .filter-option-count {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+
+/* Reference dropdown appearance: plain white list, grey all-options row, inline counts. */
+.generic-filter-options {
+    padding: 0 !important;
+    border: 1px solid #8b8b8b !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: #fff !important;
+    max-height: 365px !important;
+}
+.generic-filter-options .generic-option {
+    display: block !important;
+    width: 100%;
+    min-height: 34px;
+    padding: 7px 16px !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    color: #173653 !important;
+    text-align: left;
+    font-size: 15px;
+    font-weight: 400;
+    line-height: 1.35;
+    white-space: normal;
+}
+.generic-filter-options .generic-option:hover,
+.generic-filter-options .generic-option:focus-visible {
+    background: #f2f2f2 !important;
+    color: #173653 !important;
+    outline: none;
+}
+.generic-filter-options .generic-option.generic-option-all {
+    background: #808080 !important;
+    color: #fff !important;
+    font-weight: 400 !important;
+}
+.generic-filter-options .generic-option.generic-option-all:hover {
+    background: #737373 !important;
+}
+.generic-filter-options .filter-option-count { display: none !important; }
+.job-family-filter-field .generic-filter-options {
+    width: 100%;
+    min-width: 100%;
+    max-width: none;
+}
+
+/* FINAL OVERRIDE — Job Family / Job Title dropdown reference design.
+   Keep this block at the very end of styles.css so older rules cannot hide counts. */
+.job-family-filter-field .generic-filter-options {
+    width: min(475px, calc(100vw - 32px)) !important;
+    min-width: min(360px, calc(100vw - 32px)) !important;
+    max-width: calc(100vw - 32px) !important;
+    left: 0 !important;
+    right: auto !important;
+}
+
+.keyword-field .generic-filter-options {
+    width: 100% !important;
+    min-width: 100% !important;
+    max-width: 100% !important;
+    left: 0 !important;
+    right: 0 !important;
+}
+
+.generic-filter-options {
+    padding: 0 !important;
+    border: 1px solid #d5dee8 !important;
+    border-radius: 6px !important;
+    box-shadow: 0 8px 22px rgba(23, 54, 83, 0.12) !important;
+    background: #ffffff !important;
+    max-height: 365px !important;
+    overflow-y: auto !important;
+    z-index: 1100 !important;
+}
+
+.generic-filter-options .generic-option {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 12px !important;
+    width: 100% !important;
+    min-height: 53px !important;
+    padding: 10px 18px !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: #ffffff !important;
+    color: #173653 !important;
+    text-align: left !important;
+    font-family: "Segoe UI", Arial, sans-serif !important;
+    font-size: 17px !important;
+    font-weight: 400 !important;
+    line-height: 1.35 !important;
+    white-space: normal !important;
+    cursor: pointer !important;
+}
+
+.generic-filter-options .generic-option:hover,
+.generic-filter-options .generic-option:focus-visible {
+    background: #eef4fa !important;
+    color: #173653 !important;
+    outline: none !important;
+}
+
+.generic-filter-options .generic-option > span:first-child {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+}
+
+.generic-filter-options .filter-option-count {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex: 0 0 auto !important;
+    float: none !important;
+    margin: 0 0 0 auto !important;
+    padding: 3px 9px !important;
+    border: 0 !important;
+    border-radius: 999px !important;
+    background: #edf1f5 !important;
+    color: #173653 !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    line-height: 1.25 !important;
+    white-space: nowrap !important;
+}
+
+.generic-filter-options .generic-option.generic-option-all {
+    background: #808080 !important;
+    color: #ffffff !important;
+    font-weight: 400 !important;
+}
+
+.generic-filter-options .generic-option.generic-option-all .filter-option-count {
+    background: #edf1f5 !important;
+    color: #173653 !important;
+}
+
+.generic-filter-options .generic-option.generic-option-all:hover {
+    background: #737373 !important;
+}
+
+@media (max-width: 600px) {
+    .job-family-filter-field .generic-filter-options {
+        width: calc(100vw - 32px) !important;
+        min-width: 0 !important;
+    }
+    .generic-filter-options .generic-option {
+        font-size: 15px !important;
+        min-height: 46px !important;
+        padding: 9px 12px !important;
+    }
+}
+
+/* FINAL REFINEMENT — compact Job Title dropdown.
+   Presentation-only: API/database count values and filter logic remain unchanged. */
+.keyword-field .generic-filter-options {
+    width: min(340px, calc(100vw - 24px)) !important;
+    min-width: min(300px, calc(100vw - 24px)) !important;
+    max-width: calc(100vw - 24px) !important;
+    left: 0 !important;
+    right: auto !important;
+    max-height: 350px !important;
+    overflow-y: auto !important;
+    border: 1px solid #d5dee8 !important;
+    border-radius: 7px !important;
+    box-shadow: 0 8px 22px rgba(23, 54, 83, 0.13) !important;
+}
+
+.keyword-field .generic-filter-options .generic-option {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 7px !important;
+    min-height: 40px !important;
+    padding: 8px 12px !important;
+    font-size: 14px !important;
+    line-height: 1.35 !important;
+    font-weight: 400 !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    color: #173653 !important;
+    background: #ffffff !important;
+}
+
+.keyword-field .generic-filter-options .generic-option:hover,
+.keyword-field .generic-filter-options .generic-option:focus-visible {
+    background: #eef4fa !important;
+    color: #173653 !important;
+}
+
+.keyword-field .generic-filter-options .generic-option > span:first-child {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+}
+
+.keyword-field .generic-filter-options .filter-option-count {
+    display: inline-flex !important;
+    flex: 0 0 auto !important;
+    margin-left: auto !important;
+    padding: 2px 7px !important;
+    border-radius: 999px !important;
+    background: #edf1f5 !important;
+    color: #173653 !important;
+    font-size: 11px !important;
+    font-weight: 650 !important;
+    white-space: nowrap !important;
+}
+
+/* generic-option-all remains distinct without overpowering actual titles. */
+.keyword-field .generic-filter-options .generic-option.generic-option-all {
+    background: #f0f2f4 !important;
+    color: #173653 !important;
+    font-weight: 600 !important;
+    border-bottom: 1px solid #e1e6eb !important;
+}
+
+.keyword-field .generic-filter-options .generic-option.generic-option-all:hover {
+    background: #e7edf3 !important;
+}
+
+.keyword-field .generic-filter-options .generic-option.generic-option-all .filter-option-count {
+    background: #dfe6ed !important;
+    color: #173653 !important;
+}
+
+@media (max-width: 600px) {
+    .keyword-field .generic-filter-options {
+        width: calc(100vw - 24px) !important;
+        min-width: 0 !important;
+    }
+    .keyword-field .generic-filter-options .generic-option {
+        min-height: 38px !important;
+        padding: 7px 10px !important;
+        font-size: 13px !important;
+    }
+}
+
+
+/* Match Job Family option typography and row density to the refined Job Title dropdown.
+   Keep the wider Job Family menu and existing live count values unchanged. */
+.job-family-filter-field .generic-filter-options .generic-option {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 7px !important;
+    min-height: 40px !important;
+    padding: 8px 12px !important;
+    font-size: 14px !important;
+    line-height: 1.35 !important;
+    font-weight: 400 !important;
+    white-space: normal !important;
+}
+
+.job-family-filter-field .generic-filter-options .generic-option > span:first-child {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+}
+
+.job-family-filter-field .generic-filter-options .filter-option-count {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex: 0 0 auto !important;
+    margin: 0 0 0 auto !important;
+    padding: 2px 7px !important;
+    font-size: 11px !important;
+    font-weight: 650 !important;
+    white-space: nowrap !important;
+}
+
+@media (max-width: 600px) {
+    .job-family-filter-field .generic-filter-options .generic-option {
+        min-height: 38px !important;
+        padding: 7px 10px !important;
+        font-size: 13px !important;
+    }
+}
