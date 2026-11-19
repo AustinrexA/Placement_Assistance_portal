@@ -420,6 +420,11 @@ function showJobDetails(jobId) {
     job.title || "Job details";
   document.getElementById("jobDetailsCompany").textContent =
     job.company || "Company not specified";
+  const isUser = (document.body.dataset.userRole || "").toLowerCase() === "user";
+  // User accounts see only the job description; admins retain overview/actions.
+  document.getElementById("jobDetailsOverview").hidden = isUser;
+  document.getElementById("jobDetailsFooter").hidden = isUser;
+  document.getElementById("jobDetailsModal").classList.toggle("user-job-details", isUser);
   document.getElementById("jobDetailsMeta").innerHTML = `
         <div class="job-detail-fact"><span>Location</span><strong>${detailText(job.location)}</strong></div>
         <div class="job-detail-fact"><span>Experience</span><strong>${detailText(job.experience)}</strong></div>
@@ -432,8 +437,6 @@ function showJobDetails(jobId) {
     ? `<ul class="job-details-key-points">${points.map((point) => `<li>${escapeHTML(point)}</li>`).join("")}</ul>`
     : `<p class="job-details-empty-description">The source did not provide enough description details for a summary. Use the original listing for the full requirements.</p>`;
   const link = document.getElementById("jobDetailsApplyLink");
-  const isUser = (document.body.dataset.userRole || "").toLowerCase() === "user";
-  const sourceLink = isUser ? `/api/credits/open-job/${Number(job.id)}` : url;
   // User accounts use the in-app credits flow and should not see the
   // direct "Open original listing" button. Admins retain the original link.
   link.hidden = isUser || !url;
@@ -2647,6 +2650,64 @@ function renderAnalyticsBars(targetId,rows,color){
   const top=rows.slice(0,5), max=Math.max(1,...top.map(x=>Number(x.total||0)));
   target.innerHTML=top.length?top.map(r=>`<div class="analytics-bar-row"><span class="analytics-bar-label" title="${analyticsSafeLabel(r.label)}">${analyticsSafeLabel(r.label)}</span><div class="analytics-bar-track"><i style="width:${Math.max(2,Number(r.total||0)*100/max)}%;background:${color}"></i></div><b>${analyticsNum(r.total)}</b></div>`).join(""):'<p class="empty-state">No records found.</p>';
 }
+function renderJobFamilyTrend(rows,total){
+  const target=document.getElementById("jobFamilyTrendChart");
+  const totalNode=document.getElementById("jobFamilyTotal");
+  const countNode=document.getElementById("jobFamilyCount");
+  if(!target)return;
+  const data=(rows||[]).slice().sort((a,b)=>Number(b.total||0)-Number(a.total||0));
+  const sum=Number(total||data.reduce((n,r)=>n+Number(r.total||0),0));
+  if(totalNode)totalNode.textContent=`Total: ${analyticsNum(sum)} Jobs`;
+  if(countNode)countNode.textContent=`${data.length} Job Families`;
+  if(!data.length){target.innerHTML='<p class="empty-state">No job family data found.</p>';return;}
+  const width=Math.max(1100,data.length*92+100),height=300,left=58,right=24,top=34,bottom=218;
+  const max=Math.max(1,...data.map(r=>Number(r.total||0)));
+  const tickStep=Math.pow(10,Math.floor(Math.log10(max/4||1)));
+  const niceStep=Math.max(1,Math.ceil(max/4/tickStep)*tickStep);
+  const axisMax=Math.ceil(max/niceStep)*niceStep;
+  const x=i=>left+(data.length===1?0:i*(width-left-right)/(data.length-1));
+  const y=v=>bottom-(Number(v||0)/axisMax)*(bottom-top);
+  let grid='';
+  for(let v=0;v<=axisMax;v+=niceStep){
+    const yy=y(v);
+    grid+=`<line x1="${left}" y1="${yy}" x2="${width-right}" y2="${yy}" stroke="#edf0f4" stroke-width="1"/>`;
+    grid+=`<text x="${left-12}" y="${yy+4}" text-anchor="end" fill="#64748b" font-size="11">${analyticsNum(v)}</text>`;
+  }
+  const pts=data.map((r,i)=>({x:x(i),y:y(r.total),v:Number(r.total||0),label:String(r.label||"")}));
+  const line=pts.map((p,i)=>`${i?'L':'M'} ${p.x} ${p.y}`).join(' ');
+  const area=`${line} L ${pts[pts.length-1].x} ${bottom} L ${pts[0].x} ${bottom} Z`;
+  const smoothPath=pts.length>2?pts.reduce((acc,p,i)=>{
+    if(i===0)return `M ${p.x} ${p.y}`;
+    const prev=pts[i-1],mid=(prev.x+p.x)/2;
+    return `${acc} C ${mid} ${prev.y}, ${mid} ${p.y}, ${p.x} ${p.y}`;
+  },''):line;
+  const labelLines={
+    "Software Development & Engineering":["Software","Development &","Engineering"],
+    "Data, Analytics & Artificial Intelligence":["Data, Analytics &","AI"],
+    "Testing & Quality Assurance":["Testing &","Quality","Assurance"],
+    "Graduate, Internship & Entry-Level":["Graduate,","Internship &","Entry-Level"],
+    "IT Infrastructure, Cloud & Cybersecurity":["IT Infra.,","Cloud &","Cybersecurity"],
+    "Other & Needs Review":["Other &","Needs","Review"],
+    "Core Engineering & Manufacturing":["Core","Engineering &","Manufacturing"],
+    "Customer Support, Service & Operations":["Customer","Support &","Operations"],
+    "Sales, Marketing & Business Development":["Sales,","Marketing &","Business Dev."],
+    "Business Management, Consulting & Administration":["Business","Management","& Consulting"],
+    "ERP & Enterprise Applications":["ERP &","Enterprise","Applications"],
+    "Finance, Accounting & Banking":["Finance,","Accounting","& Banking"],
+    "Database Engineering & Administration":["Database","Engineering &","Administration"],
+    "Design, Creative & Content":["Design,","Creative &","Content"],
+    "Human Resources & Talent Management":["Human","Resources &","Talent Mgmt."]
+  };
+  const labels=pts.map(p=>{
+    const lines=labelLines[p.label]||[p.label];
+    return `<text x="${p.x}" y="${bottom+22}" text-anchor="middle" fill="#34445d" font-size="10">${lines.map((line,i)=>`<tspan x="${p.x}" dy="${i?12:0}">${analyticsSafeLabel(line)}</tspan>`).join('')}</text>`;
+  }).join('');
+  const marks=pts.map((p,i)=>{
+    const boxW=Math.max(38,analyticsNum(p.v).length*7+12),boxY=Math.max(2,p.y-29);
+    return `<g><rect x="${p.x-boxW/2}" y="${boxY}" width="${boxW}" height="21" rx="5" fill="#fff" stroke="#f5a35b" stroke-width="1.2"/><text x="${p.x}" y="${boxY+14}" text-anchor="middle" fill="#9a4d0a" font-size="11" font-weight="700">${analyticsNum(p.v)}</text><circle cx="${p.x}" cy="${p.y}" r="5.2" fill="#fff" stroke="#f58220" stroke-width="2.4"/></g>`;
+  }).join('');
+  target.innerHTML=`<div class="job-family-svg-scroll"><svg viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-label="Job counts across ${data.length} job families"><defs><linearGradient id="jobFamilyAreaFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#ff9b45" stop-opacity=".34"/><stop offset="100%" stop-color="#ff9b45" stop-opacity=".04"/></linearGradient></defs>${grid}<path d="${area}" fill="url(#jobFamilyAreaFill)"/><path d="${smoothPath}" fill="none" stroke="#f58220" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>${marks}${labels}<line x1="${left}" y1="${bottom}" x2="${width-right}" y2="${bottom}" stroke="#dce3ec"/><text x="${(left+width-right)/2}" y="${height-7}" text-anchor="middle" fill="#52647c" font-size="11" font-weight="600">Job Families</text><text transform="translate(14 ${(top+bottom)/2}) rotate(-90)" text-anchor="middle" fill="#52647c" font-size="11" font-weight="600">Number of Jobs</text></svg></div>`;
+}
 async function loadAdminAnalytics(){
   const section=document.getElementById("adminAnalytics"); if(!section)return;
   try{
@@ -2655,16 +2716,17 @@ async function loadAdminAnalytics(){
     renderExperienceAnalytics(data);
     renderAnalyticsBars("companyBars",data.companies||[],"linear-gradient(90deg,#ffb15d,#ff8617)");
     renderAnalyticsBars("locationBars",data.locations||[],"linear-gradient(90deg,#75b2ff,#2580ef)");
+    renderJobFamilyTrend(data.job_families||[],data.job_family_total);
   }catch(err){
     console.error("Admin analytics unavailable",err);
-    ["portalLegend","experienceLegend","companyBars","locationBars"].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML='<p class="empty-state">Analytics could not load.</p>';});
+    ["portalLegend","experienceLegend","companyBars","locationBars","jobFamilyTrendChart"].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML='<p class="empty-state">Analytics could not load.</p>';});
   }
 }
 function openAnalyticsDetails(key){
   if(!adminAnalyticsData)return;
   activeAnalyticsKey=key;
   const modal=document.getElementById("analyticsModal"), title=document.getElementById("analyticsModalTitle"), search=document.getElementById("analyticsSearch");
-  const titles={portals:"All Job Portals",experience:"Fresher & Experience Breakdown",companies:"All Companies",locations:"All Locations"};
+  const titles={portals:"All Job Portals",experience:"Fresher & Experience Breakdown",companies:"All Companies",locations:"All Locations",job_families:"All Job Families"};
   if(title)title.textContent=titles[key]||"Analytics Details";
   if(search){search.value="";search.hidden=key==="experience";}
   renderAnalyticsDetails();
@@ -2676,6 +2738,7 @@ function renderAnalyticsDetails(){
   if(activeAnalyticsKey==="portals")rows=adminAnalyticsData.portals||[];
   if(activeAnalyticsKey==="companies")rows=adminAnalyticsData.companies||[];
   if(activeAnalyticsKey==="locations")rows=adminAnalyticsData.locations||[];
+  if(activeAnalyticsKey==="job_families")rows=adminAnalyticsData.job_families||[];
   if(activeAnalyticsKey==="experience")rows=[{label:"Freshers",total:adminAnalyticsData.fresher_jobs},{label:"Experienced",total:adminAnalyticsData.experienced_jobs},{label:"Unclassified",total:Math.max(0,adminAnalyticsData.total_jobs-adminAnalyticsData.fresher_jobs-adminAnalyticsData.experienced_jobs)}];
   const q=(document.getElementById("analyticsSearch")?.value||"").trim().toLowerCase();
   if(q)rows=rows.filter(r=>String(r.label||"").toLowerCase().includes(q));
@@ -2687,70 +2750,116 @@ document.addEventListener("click",e=>{
 });
 document.addEventListener("input",e=>{if(e.target.id==="analyticsSearch")renderAnalyticsDetails();});
 
-// Reports page: searchable category options + date-scoped DB report and exports.
+// Reports page: Job Portal-aligned family/title filters, date-scoped results and exports.
 document.addEventListener("DOMContentLoaded", () => {
-  const category=document.getElementById("transactionCategory"), value=document.getElementById("transactionValue"),
-    datalist=document.getElementById("transactionValueOptions"), toggle=document.getElementById("transactionValueToggle"), label=document.getElementById("transactionValueLabel"),
+  const familyInput=document.getElementById("transactionFamily"), roleInput=document.getElementById("transactionRole"),
+    familyOptionsBox=document.getElementById("transactionFamilyOptions"), roleOptionsBox=document.getElementById("transactionRoleOptions"),
+    familyToggle=document.getElementById("transactionFamilyToggle"), roleToggle=document.getElementById("transactionRoleToggle"),
     rows=document.getElementById("transactionRows"), count=document.getElementById("transactionCount"),
     filterBtn=document.getElementById("transactionFilterButton"), resetBtn=document.getElementById("transactionResetButton"),
-    excelBtn=document.getElementById("transactionExcel"), pdfBtn=document.getElementById("transactionPdf");
-  if(!category||!value||!rows||!datalist)return;
-  const labels={portal:"Job Portal Contribution",fresher:"Fresher vs Experienced",company:"Companies Distribution",location:"Locations Distribution"};
-  let options=[],filteredRows=[];
+    excelBtn=document.getElementById("transactionExcel"), pdfBtn=document.getElementById("transactionPdf"),
+    startInput=document.getElementById("transactionStart"), endInput=document.getElementById("transactionEnd");
+  if(!familyInput||!roleInput||!rows||!familyOptionsBox||!roleOptionsBox)return;
+
+  let families=[], roles=[], selectedFamily="", selectedRole="", filteredRows=[];
   const safe=v=>escapeHTML(v==null||v===""?"—":String(v));
-  const dateText=v=>{if(!v)return "—";const d=new Date(v);return Number.isNaN(d.getTime())?String(v).slice(0,10):d.toLocaleDateString("en-IN");};
+  const dateText=v=>{if(!v)return "—";const d=new Date(v);return Number.isNaN(d.getTime())?String(v).slice(0,10):d.toLocaleDateString("en-IN")};
   const salaryText=j=>j.salary_min==null&&j.salary_max==null?"—":`${j.salary_min==null?"—":Number(j.salary_min).toLocaleString("en-IN")} – ${j.salary_max==null?"—":Number(j.salary_max).toLocaleString("en-IN")} ${j.salary_currency||"INR"}${j.salary_period?" / "+j.salary_period:""}`;
-  function selected(){return options.find(o=>o.label===value.value||o.value===value.value)||null;}
-  function renderOptions(query){
-    const q=(query||"").toLowerCase();
-    const matches=options.filter(o=>String(o.label||o.value).toLowerCase().includes(q)).slice(0,150);
-    datalist.innerHTML=matches.map(o=>`<button type="button" class="location-option report-option" role="option" data-value="${safe(o.label||o.value)}">${safe(o.label||o.value)}</button>`).join("")||'<div class="location-option-empty">No matching options</div>';
-    datalist.hidden=false;value.setAttribute("aria-expanded","true");toggle?.setAttribute("aria-expanded","true");
+  const normalize=v=>String(v||"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
+  const referenceRoles=typeof REFERENCE_ROLE_GROUPS!=="undefined"?REFERENCE_ROLE_GROUPS:{};
+  const familyLabel=()=>selectedFamily==="Business Management, Consulting & Administration"?"Business Management & Administration":selectedFamily;
+
+  function closeBox(box,input,toggle){box.hidden=true;input.setAttribute("aria-expanded","false");toggle?.setAttribute("aria-expanded","false")}
+  function renderBox(box,input,toggle,list,query){
+    const q=String(query||"").toLowerCase();
+    const filtered=list.filter(o=>String(o.label||o.value).toLowerCase().includes(q)).slice(0,200);
+    box.innerHTML=filtered.map(o=>`<button type="button" class="location-option report-option${o.special?" generic-option-all":""}" role="option" data-value="${safe(o.value)}" data-label="${safe(o.label)}"><span>${safe(o.label)}${o.count!=null?` (${Number(o.count).toLocaleString("en-IN")})`:""}</span></button>`).join("")||'<div class="location-option-empty">No matching options</div>';
+    box.hidden=false;input.setAttribute("aria-expanded","true");toggle?.setAttribute("aria-expanded","true");
   }
-  function closeOptions(){datalist.hidden=true;value.setAttribute("aria-expanded","false");toggle?.setAttribute("aria-expanded","false")}
-  datalist.addEventListener("click",e=>{const item=e.target.closest("[data-value]");if(!item)return;value.value=item.dataset.value;closeOptions()});
-  value.addEventListener("input",()=>renderOptions(value.value));
-  value.addEventListener("focus",()=>renderOptions(value.value));
-  toggle?.addEventListener("click",()=>datalist.hidden?renderOptions(value.value):closeOptions());
-  document.addEventListener("click",e=>{if(!e.target.closest(".report-value-wrap"))closeOptions()});
-  async function loadOptions(){
-    const key=category.value; label.firstChild&&(label.firstChild.textContent=labels[key]+" ");
-    value.value="";value.placeholder=`Select ${labels[key]}`;datalist.innerHTML="";value.disabled=true;
-    try{
-      const r=await fetch(`/api/reports/jobs/options?category=${encodeURIComponent(key)}`,{headers:{Accept:"application/json"}});
-      const raw=await r.text();let data;try{data=JSON.parse(raw)}catch{throw Error("Options API returned HTML instead of JSON. Check login/session or route.");}
-      if(!r.ok)throw Error(data.error||"Options failed");
-      options=Array.isArray(data.data)?data.data:[];
-      renderOptions("");
-      value.setAttribute("aria-expanded","false");
-    }catch(e){console.error(e);options=[];showNotification(e.message,true)}
-    finally{value.disabled=false}
+  function familyList(){return families.map(o=>({value:String(o.value),label:String(o.label||o.value),count:o.job_count??o.count}))}
+  function roleList(){
+    if(!selectedFamily)return [];
+    const byName=new Map(roles.map(o=>[normalize(o.value??o.label),o]));
+    const names=referenceRoles[selectedFamily];
+    const ordered=names?names.map(name=>{const found=byName.get(normalize(name));return {value:String(found?.value??name),label:name,count:Number(found?.job_count??found?.count??0)}}):roles.map(o=>({value:String(o.value),label:String(o.label||o.value),count:o.job_count??o.count}));
+    const total=ordered.reduce((sum,o)=>sum+Number(o.count||0),0);
+    return [{value:"__ALL_IN_FAMILY__",label:`All ${familyLabel()} Roles`,count:total,special:true},...ordered];
   }
+  async function getJson(url){const r=await fetch(url,{headers:{Accept:"application/json"}}),txt=await r.text();let d;try{d=JSON.parse(txt)}catch{throw Error("Server returned HTML instead of JSON. Check Reports API/login session.")};if(!r.ok)throw Error(d.error||"Unable to load report data");return d}
+  async function loadFamilies(){
+    familyInput.disabled=true;
+    try{const d=await getJson("/api/reports/jobs/options?category=family");families=Array.isArray(d.data)?d.data:[];renderBox(familyOptionsBox,familyInput,familyToggle,familyList(),"");closeBox(familyOptionsBox,familyInput,familyToggle)}
+    catch(e){console.error(e);families=[];showNotification(e.message,true)}
+    finally{familyInput.disabled=false}
+  }
+  async function loadRoles(){
+    roles=[];selectedRole="";roleInput.value="";roleInput.disabled=!selectedFamily;roleToggle.disabled=!selectedFamily;
+    roleOptionsBox.innerHTML="";closeBox(roleOptionsBox,roleInput,roleToggle);
+    if(!selectedFamily)return;
+    roleInput.disabled=true;
+    try{const d=await getJson(`/api/reports/jobs/options?category=role&job_family=${encodeURIComponent(selectedFamily)}`);roles=Array.isArray(d.data)?d.data:[];renderBox(roleOptionsBox,roleInput,roleToggle,roleList(),"");closeBox(roleOptionsBox,roleInput,roleToggle)}
+    catch(e){console.error(e);showNotification(e.message,true)}
+    finally{roleInput.disabled=false}
+  }
+  familyInput.addEventListener("focus",()=>renderBox(familyOptionsBox,familyInput,familyToggle,familyList(),familyInput.value===selectedFamily?"":familyInput.value));
+  familyInput.addEventListener("input",()=>{if(familyInput.value!==selectedFamily){selectedFamily="";selectedRole="";roleInput.value="";roleInput.disabled=true;roleToggle.disabled=true;roles=[];}renderBox(familyOptionsBox,familyInput,familyToggle,familyList(),familyInput.value)});
+  familyToggle.addEventListener("click",()=>familyOptionsBox.hidden?renderBox(familyOptionsBox,familyInput,familyToggle,familyList(),""):closeBox(familyOptionsBox,familyInput,familyToggle));
+  familyOptionsBox.addEventListener("click",async e=>{const item=e.target.closest("[data-value]");if(!item)return;selectedFamily=item.dataset.value;familyInput.value=item.dataset.label;closeBox(familyOptionsBox,familyInput,familyToggle);await loadRoles()});
+  roleInput.addEventListener("focus",()=>{if(selectedFamily)renderBox(roleOptionsBox,roleInput,roleToggle,roleList(),roleInput.value.startsWith("All ")?"":roleInput.value)});
+  roleInput.addEventListener("input",()=>{if(selectedRole&&roleInput.value!==roleList().find(o=>o.value===selectedRole)?.label)selectedRole="";if(selectedFamily)renderBox(roleOptionsBox,roleInput,roleToggle,roleList(),roleInput.value)});
+  roleToggle.addEventListener("click",()=>{if(!selectedFamily)return;roleOptionsBox.hidden?renderBox(roleOptionsBox,roleInput,roleToggle,roleList(),""):closeBox(roleOptionsBox,roleInput,roleToggle)});
+  roleOptionsBox.addEventListener("click",e=>{const item=e.target.closest("[data-value]");if(!item)return;selectedRole=item.dataset.value;roleInput.value=item.dataset.label;closeBox(roleOptionsBox,roleInput,roleToggle)});
+  document.addEventListener("click",e=>{if(!e.target.closest("#reportsPage .report-value-wrap")){closeBox(familyOptionsBox,familyInput,familyToggle);closeBox(roleOptionsBox,roleInput,roleToggle)}});
+
   function paramsFor(exportMode=false){
-    const p=new URLSearchParams(),key=category.value,o=selected(),v=o?.value||value.value;
-    if(v){
-      if(key==="portal")p.set("report_source_id",o?.source_id||v);
-      else if(key==="fresher")p.set("fresher_group",v);
-      else if(key==="company")p.set("company",v);
-      else if(key==="location")p.set("location",v);
-    }
-    const from=document.getElementById("transactionStart").value,to=document.getElementById("transactionEnd").value;
-    if(from)p.set(exportMode?"posted_after":"posted_from",from);if(to)p.set(exportMode?"posted_before":"posted_to",to);
+    const p=new URLSearchParams();
+    if(selectedFamily)p.set("job_family",selectedFamily);
+    if(selectedRole&&selectedRole!=="__ALL_IN_FAMILY__")p.set("role",selectedRole);
+    if(startInput.value)p.set(exportMode?"posted_after":"posted_from",startInput.value);
+    if(endInput.value)p.set(exportMode?"posted_before":"posted_to",endInput.value);
     return p;
   }
   function render(list){rows.innerHTML=list.map(j=>`<tr><td>${safe(dateText(j.posted_at))}</td><td>${safe(j.title)}</td><td>${safe(j.company)}</td><td>${safe(j.location)}</td><td>${safe(j.experience)}</td><td>${safe(salaryText(j))}</td></tr>`).join("")||'<tr><td colspan="6" class="empty-state">No records match the selected filters.</td></tr>'}
-  async function jsonFetch(url){const r=await fetch(url,{headers:{Accept:"application/json"}}),txt=await r.text();let d;try{d=JSON.parse(txt)}catch{throw Error("Server returned HTML instead of JSON. Please check Reports API/login.");}if(!r.ok)throw Error(d.error||"Request failed");return d}
   async function filter(){
-    const from=document.getElementById("transactionStart").value,to=document.getElementById("transactionEnd").value;
-    if(from&&to&&from>to){showNotification("Start Date cannot be after End Date.",true);return}
+    if(startInput.value&&endInput.value&&startInput.value>endInput.value){showNotification("Start Date cannot be after End Date.",true);return}
     rows.innerHTML='<tr><td colspan="6">Loading report…</td></tr>';count.textContent="Loading…";
     const p=paramsFor();p.set("page","1");p.set("per_page","100");
-    try{const d=await jsonFetch(`/api/reports/jobs?${p}`);filteredRows=d.data||[];const total=Number(d.pagination?.total||filteredRows.length);count.textContent=`${total.toLocaleString("en-IN")} record(s)`;render(filteredRows);if(total>filteredRows.length)rows.insertAdjacentHTML("beforeend",`<tr><td colspan="6">Showing 100 of ${total}. PDF/Excel export includes all matches.</td></tr>`)}
+    try{const d=await getJson(`/api/reports/jobs?${p}`);filteredRows=d.data||[];const total=Number(d.pagination?.total||filteredRows.length);count.textContent=`${total.toLocaleString("en-IN")} record(s)`;render(filteredRows);if(total>filteredRows.length)rows.insertAdjacentHTML("beforeend",`<tr><td colspan="6">Showing 100 of ${total}. PDF/Excel export includes all matches.</td></tr>`)}
     catch(e){count.textContent="Report unavailable";rows.innerHTML=`<tr><td colspan="6">${safe(e.message)}</td></tr>`;console.error(e)}
   }
-  category.addEventListener("change",loadOptions);filterBtn?.addEventListener("click",filter);
-  resetBtn?.addEventListener("click",async()=>{category.value="portal";value.value="";document.getElementById("transactionStart").value="";document.getElementById("transactionEnd").value="";await loadOptions();filteredRows=[];rows.innerHTML='<tr><td colspan="6">Select filters and click Filter.</td></tr>';count.textContent="Results"});
-  excelBtn?.addEventListener("click",async()=>{try{const p=paramsFor(true);p.set("format","xlsx");const r=await fetch(`/api/jobs/export?${p}`);if(!r.ok){const t=await r.text();throw Error("Excel export failed: "+t.slice(0,120))}const b=await r.blob(),u=URL.createObjectURL(b),a=document.createElement("a");a.href=u;a.download="v4career_report.xlsx";a.click();URL.revokeObjectURL(u)}catch(e){showNotification(e.message,true)}});
-  pdfBtn?.addEventListener("click",async()=>{if(!filteredRows.length){showNotification("Click Filter before exporting PDF.",true);return}const original=filteredRows.slice();try{const p=paramsFor();p.set("page","1");p.set("per_page","100");const first=await jsonFetch(`/api/reports/jobs?${p}`),all=(first.data||[]).slice(),pages=Number(first.pagination?.total_pages||1);for(let n=2;n<=pages;n++){p.set("page",n);all.push(...(await jsonFetch(`/api/reports/jobs?${p}`)).data||[])}filteredRows=all;render(all);window.addEventListener("afterprint",()=>{filteredRows=original;render(original)},{once:true});window.print()}catch(e){filteredRows=original;render(original);showNotification(e.message,true)}});
-  loadOptions();
+  filterBtn?.addEventListener("click",filter);
+  resetBtn?.addEventListener("click",async()=>{selectedFamily="";selectedRole="";familyInput.value="";roleInput.value="";roleInput.disabled=true;roleToggle.disabled=true;startInput.value="";endInput.value="";roles=[];filteredRows=[];closeBox(familyOptionsBox,familyInput,familyToggle);closeBox(roleOptionsBox,roleInput,roleToggle);rows.innerHTML='<tr><td colspan="6">Choose filters and click Filter.</td></tr>';count.textContent="Results";await loadFamilies()});
+  excelBtn?.addEventListener("click",async()=>{
+    const originalLabel=excelBtn.textContent;
+    try{
+      if(startInput.value&&endInput.value&&startInput.value>endInput.value)throw Error("Start Date cannot be after End Date.");
+      if(!filteredRows.length){showNotification("Click Filter before exporting Excel.",true);return;}
+      excelBtn.disabled=true;excelBtn.textContent="Preparing Excel…";
+      const p=paramsFor();p.set("page","1");p.set("per_page","100");
+      const first=await getJson(`/api/reports/jobs?${p}`);
+      const all=(first.data||[]).slice();
+      const pages=Number(first.pagination?.total_pages||1);
+      for(let page=2;page<=pages;page++){
+        p.set("page",String(page));
+        const next=await getJson(`/api/reports/jobs?${p}`);
+        all.push(...(next.data||[]));
+      }
+      if(!all.length)throw Error("No matching jobs were found to export.");
+      const response=await fetch("/api/reports/jobs/export",{
+        method:"POST",
+        headers:{"Content-Type":"application/json","Accept":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
+        body:JSON.stringify({job_ids:all.map(job=>job.id)})
+      });
+      if(!response.ok){let message="Excel export failed.";try{const data=await response.json();message=data.error||message}catch{}throw Error(message)}
+      const blob=await response.blob();
+      const url=URL.createObjectURL(blob);
+      const link=document.createElement("a");link.href=url;link.download="v4career_filtered_jobs.xlsx";
+      document.body.appendChild(link);link.click();link.remove();
+      window.setTimeout(()=>URL.revokeObjectURL(url),60000);
+      showNotification(`Excel report downloaded (${all.length.toLocaleString("en-IN")} jobs).`);
+    }catch(e){showNotification(e.message||"Excel export failed.",true)}
+    finally{excelBtn.disabled=false;excelBtn.textContent=originalLabel;}
+  });
+  pdfBtn?.addEventListener("click",async()=>{if(!filteredRows.length){showNotification("Click Filter before exporting PDF.",true);return}if(startInput.value&&endInput.value&&startInput.value>endInput.value){showNotification("Start Date cannot be after End Date.",true);return}const original=filteredRows.slice();try{const p=paramsFor();p.set("page","1");p.set("per_page","100");const first=await getJson(`/api/reports/jobs?${p}`),all=(first.data||[]).slice(),pages=Number(first.pagination?.total_pages||1);for(let n=2;n<=pages;n++){p.set("page",n);all.push(...((await getJson(`/api/reports/jobs?${p}`)).data||[]))}filteredRows=all;render(all);window.addEventListener("afterprint",()=>{filteredRows=original;render(original)},{once:true});window.print()}catch(e){filteredRows=original;render(original);showNotification(e.message,true)}});
+  loadFamilies();
 });

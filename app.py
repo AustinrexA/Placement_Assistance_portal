@@ -1239,6 +1239,8 @@ def admin_analytics():
         return jsonify({"error": "Admin access required"}), 403
     try:
         total = fetch_one("SELECT COUNT(*) AS total FROM jobs") or {}
+        # Reuse the same title-to-family mapping used by the Job Portal filters.
+        _ensure_job_family_mapping()
         fresher = fetch_one("""
             SELECT COUNT(*) AS total FROM jobs
             WHERE LOWER(COALESCE(experience, '')) ~
@@ -1282,6 +1284,22 @@ def admin_analytics():
             FROM jobs GROUP BY COALESCE(NULLIF(TRIM(location), ''), 'Unknown location')
             ORDER BY total DESC, label ASC
         """)
+        family_counts = fetch_all("""
+            SELECT COALESCE(NULLIF(TRIM(m.job_family), ''), 'Other & Needs Review') AS label,
+                   COUNT(j.id) AS total
+            FROM jobs j
+            LEFT JOIN job_title_family_map m
+              ON TRIM(j.title) = m.original_title
+            GROUP BY COALESCE(NULLIF(TRIM(m.job_family), ''), 'Other & Needs Review')
+        """)
+        family_count_lookup = {
+            str(row.get("label") or "").strip(): int(row.get("total") or 0)
+            for row in family_counts
+        }
+        job_families = [
+            {"label": family, "total": family_count_lookup.get(family, 0)}
+            for family in JOB_FAMILY_NAMES
+        ]
         # Normalize common India location variants into consistent city buckets.
         normalized_locations = {}
 
@@ -1338,7 +1356,9 @@ def admin_analytics():
             "fresher_jobs": int((fresher or {}).get("total") or 0),
             "experienced_jobs": int(experienced.get("total") or 0),
             "portals": portals, "portal_source_count": 18,
-            "companies": companies, "locations": locations
+            "companies": companies, "locations": locations,
+            "job_families": job_families,
+            "job_family_total": sum(row["total"] for row in job_families)
         })
     except DATABASE_ERRORS:
         app.logger.exception("Admin analytics query failed")
@@ -2048,6 +2068,31 @@ def report_job_options():
         "location": ("location", "Location"),
             }
     try:
+        if category in {"family", "role"}:
+            _ensure_job_family_mapping()
+            selected_family = request.args.get("job_family", "").strip()
+            if category == "family":
+                rows = fetch_all("""
+                    SELECT fm.job_family AS value, COUNT(*) AS job_count
+                    FROM jobs j JOIN job_title_family_map fm
+                      ON fm.title_hash = MD5(TRIM(j.title))
+                    WHERE j.title IS NOT NULL AND TRIM(j.title) <> ''
+                    GROUP BY fm.job_family
+                    ORDER BY job_count DESC, fm.job_family
+                """)
+            else:
+                if not selected_family:
+                    return jsonify({"data": []})
+                rows = fetch_all("""
+                    SELECT fm.role_group AS value, COUNT(*) AS job_count
+                    FROM jobs j JOIN job_title_family_map fm
+                      ON fm.title_hash = MD5(TRIM(j.title))
+                    WHERE fm.job_family = %s
+                      AND j.title IS NOT NULL AND TRIM(j.title) <> ''
+                    GROUP BY fm.role_group
+                    ORDER BY job_count DESC, fm.role_group
+                """, (selected_family,))
+            return jsonify({"data": [{"value": r["value"], "label": r["value"], "count": r["job_count"], "job_count": r["job_count"]} for r in rows]})
         if category == "portal":
             # Keep the same portal set and labels as Dashboard analytics.
             portal_names = ["Naukri","Indeed","LinkedIn","Glassdoor","Foundit","TimesJobs","Bayt",
@@ -2133,8 +2178,9 @@ def report_job_options():
 
 @app.route("/api/reports/jobs", methods=["GET"])
 def report_jobs():
-    """Paginated job report using the existing jobs and sources tables."""
+    """Paginated job report using the same family/role mapping as Job Portal."""
     try:
+        _ensure_job_family_mapping()
         page = max(1, int(request.args.get("page", 1)))
         per_page = int(request.args.get("per_page", 20))
 
@@ -2151,6 +2197,8 @@ def report_jobs():
         location = request.args.get("location", "").strip()
         role = request.args.get("role", "").strip()
         title = request.args.get("title", "").strip()
+        job_family = request.args.get("job_family", "").strip()
+        role_group = request.args.get("role", "").strip()
         experience = request.args.get("experience", "").strip()
         salary_min = request.args.get("salary_min", "").strip()
         salary_max = request.args.get("salary_max", "").strip()
@@ -2191,13 +2239,22 @@ def report_jobs():
                 conditions.append("LOWER(TRIM(COALESCE(j.location,''))) = LOWER(TRIM(%s))")
                 params.append(location)
 
-        if role:
-            conditions.append("j.title LIKE %s")
-            params.append(f"%{role}%")
-
         if title:
             conditions.append("LOWER(TRIM(j.title)) = LOWER(TRIM(%s))")
             params.append(title)
+
+        if job_family:
+            conditions.append(
+                "EXISTS (SELECT 1 FROM job_title_family_map fm "
+                "WHERE fm.title_hash = MD5(TRIM(j.title)) AND fm.job_family = %s)"
+            )
+            params.append(job_family)
+        if role_group and role_group != "__ALL_IN_FAMILY__":
+            conditions.append(
+                "EXISTS (SELECT 1 FROM job_title_family_map rfm "
+                "WHERE rfm.title_hash = MD5(TRIM(j.title)) AND rfm.role_group = %s)"
+            )
+            params.append(role_group)
 
         if experience:
             conditions.append("j.experience = %s")
@@ -2619,6 +2676,133 @@ def _style_export_sheet(sheet, widths, table_name):
         if len(row) >= 1 and sheet.row_dimensions[row_index].height is None:
             sheet.row_dimensions[row_index].height = 36
     sheet.sheet_view.showGridLines = False
+
+
+@app.route("/api/reports/jobs/export", methods=["POST"])
+def export_report_jobs_excel():
+    """Build the Reports Excel file from IDs returned by the paginated Reports API.
+
+    The browser applies the exact same report filters as PDF by collecting every
+    page from /api/reports/jobs. This endpoint only enriches those IDs with the
+    full description and writes the workbook in streaming mode.
+    """
+    try:
+        payload = request.get_json(silent=True) or {}
+        raw_ids = payload.get("job_ids", [])
+        if not isinstance(raw_ids, list) or not raw_ids:
+            return jsonify({"error": "No matching jobs were supplied. Click Filter first."}), 400
+        if len(raw_ids) > 100000:
+            return jsonify({"error": "The selected report exceeds the supported Excel export size."}), 400
+
+        job_ids = []
+        seen = set()
+        for value in raw_ids:
+            try:
+                job_id = int(value)
+            except (TypeError, ValueError):
+                return jsonify({"error": "The report contains an invalid job ID."}), 400
+            if job_id <= 0:
+                return jsonify({"error": "The report contains an invalid job ID."}), 400
+            if job_id not in seen:
+                seen.add(job_id)
+                job_ids.append(job_id)
+
+        # Fetch in small batches to avoid database parameter and memory spikes.
+        jobs_by_id = {}
+        for offset in range(0, len(job_ids), 500):
+            batch = job_ids[offset:offset + 500]
+            placeholders = ",".join(["%s"] * len(batch))
+            batch_rows = fetch_all(
+                f"""SELECT j.id, j.title, j.company, j.location, j.experience,
+                           j.salary_min, j.salary_max, j.salary_currency,
+                           j.salary_period, j.skills, s.name AS source_name,
+                           j.posted_at, j.status, j.job_url, j.description
+                    FROM jobs j LEFT JOIN sources s ON s.id = j.source_id
+                    WHERE j.id IN ({placeholders})""",
+                tuple(batch),
+            )
+            jobs_by_id.update({int(row["id"]): row for row in batch_rows})
+
+        # Preserve the same ordering returned by the paginated Reports API.
+        workbook = Workbook(write_only=True)
+        listings = workbook.create_sheet("Job Listings")
+        descriptions = workbook.create_sheet("Full Descriptions")
+        header_fill = PatternFill(fill_type="solid", fgColor="16324F")
+        header_font = Font(bold=True, color="FFFFFF", size=10)
+
+        def append_header(sheet, values):
+            cells = []
+            for value in values:
+                cell = WriteOnlyCell(sheet, value=value)
+                cell.fill = header_fill
+                cell.font = header_font
+                cells.append(cell)
+            sheet.append(cells)
+
+        from openpyxl.cell import WriteOnlyCell
+        append_header(listings, ["ID", "Job Title", "Company", "Location", "Experience", "Salary Min", "Salary Max", "Currency", "Salary Period", "Skills", "Source", "Posted Date", "Status", "Job URL", "Description Preview"])
+        append_header(descriptions, ["Job ID", "Job Title", "Company", "Location", "Full Job Description"])
+
+        for job_id in job_ids:
+            job = jobs_by_id.get(job_id)
+            if not job:
+                continue
+            skills_value = job.get("skills")
+            if isinstance(skills_value, (list, dict)):
+                skills_value = json.dumps(skills_value, ensure_ascii=False)
+            description = _clean_excel_text(job.get("description"))
+            preview = description[:500]
+            if len(description) > 500:
+                preview = preview.rsplit(" ", 1)[0].rstrip() + "… See Full Descriptions tab."
+            posted = job.get("posted_at")
+            if isinstance(posted, (datetime, date)):
+                posted = posted.isoformat()
+            listings.append([
+                _excel_safe_value(job.get("id")),
+                _excel_safe_value(str(job.get("title") or "")),
+                _excel_safe_value(str(job.get("company") or "")),
+                _excel_safe_value(str(job.get("location") or "")),
+                _excel_safe_value(str(job.get("experience") or "")),
+                _excel_safe_value(job.get("salary_min")),
+                _excel_safe_value(job.get("salary_max")),
+                _excel_safe_value(str(job.get("salary_currency") or "")),
+                _excel_safe_value(str(job.get("salary_period") or "")),
+                _excel_safe_value(skills_value if isinstance(skills_value, str) else str(skills_value or "")),
+                _excel_safe_value(str(job.get("source_name") or "")),
+                _excel_safe_value(str(posted or "")),
+                _excel_safe_value(str(job.get("status") or "")),
+                _excel_safe_value(str(job.get("job_url") or "")),
+                _excel_safe_value(preview),
+            ])
+            descriptions.append([
+                _excel_safe_value(job.get("id")),
+                _excel_safe_value(str(job.get("title") or "")),
+                _excel_safe_value(str(job.get("company") or "")),
+                _excel_safe_value(str(job.get("location") or "")),
+                _excel_safe_value(description),
+            ])
+
+        for sheet, widths in ((listings, [10, 32, 28, 25, 18, 16, 16, 12, 14, 35, 20, 20, 14, 48, 68]), (descriptions, [12, 32, 28, 25, 100])):
+            sheet.freeze_panes = "A2"
+            sheet.sheet_view.showGridLines = False
+            for index, width in enumerate(widths, start=1):
+                sheet.column_dimensions[chr(64 + index)].width = width
+
+        output = BytesIO()
+        workbook.save(output)
+        output.seek(0)
+        return send_file(
+            output,
+            as_attachment=True,
+            download_name="v4career_filtered_jobs.xlsx",
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+    except DATABASE_ERRORS:
+        app.logger.exception("Failed to export filtered report jobs")
+        return jsonify({"error": "Unable to retrieve the filtered jobs for Excel export."}), 500
+    except Exception:
+        app.logger.exception("Unexpected error while exporting filtered report jobs")
+        return jsonify({"error": "Unable to generate the Excel report. Please try again."}), 500
 
 
 @app.route("/api/jobs/export", methods=["GET"])

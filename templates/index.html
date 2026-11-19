@@ -150,6 +150,25 @@
                         <div class="analytics-bars location-bars" id="locationBars"><span class="empty-state">Loading locations…</span></div>
                     </article>
                 </section>
+                <section class="admin-analytics-card job-family-trend-card" aria-labelledby="jobFamilyTrendTitle">
+                    <div class="admin-analytics-head job-family-trend-head">
+                        <div class="job-family-trend-title">
+                            <span class="job-family-trend-icon" aria-hidden="true">▰</span>
+                            <div>
+                                <h3 id="jobFamilyTrendTitle">Job Family Trend</h3>
+                                <p>Number of jobs across all 15 job families</p>
+                            </div>
+                        </div>
+                        <div class="job-family-trend-summary">
+                            <span id="jobFamilyTotal">Total: — Jobs</span>
+                            <span id="jobFamilyCount">15 Job Families</span>
+                            <button class="analytics-details" data-analytics="job_families">View Details →</button>
+                        </div>
+                    </div>
+                    <div id="jobFamilyTrendChart" class="job-family-trend-chart" role="img" aria-label="Job counts by job family">
+                        <span class="empty-state">Loading job family data…</span>
+                    </div>
+                </section>
                 <div class="analytics-modal" id="analyticsModal" hidden>
                     <div class="analytics-modal-backdrop" data-close-analytics></div>
                     <section class="analytics-modal-content" role="dialog" aria-modal="true" aria-labelledby="analyticsModalTitle">
@@ -205,6 +224,7 @@
                         type="button"
                         class="export-button"
                         id="exportButton"
+                        {% if user_role == "user" %}hidden{% endif %}
                     >
                         ↓ Export Excel
                     </button>
@@ -482,17 +502,18 @@
 <section class="workspace secondary-page" id="reportsPage" hidden>
     <div class="transactions-heading"><h2>Manage All Transactions</h2></div>
     <section class="transaction-filter-panel">
-      <label>Category<select id="transactionCategory">
-        <option value="portal">Job Portal Contribution</option>
-        <option value="fresher">Fresher vs Experienced</option>
-        <option value="company">Companies Distribution</option>
-        <option value="location">Locations Distribution</option>
-      </select></label>
-      <label id="transactionValueLabel">Job Title
+      <label>Job Family
         <div class="location-input-wrap report-value-wrap">
-          <input id="transactionValue" type="text" placeholder="Select Job Title" autocomplete="off" aria-autocomplete="list" aria-controls="transactionValueOptions" aria-expanded="false" role="combobox">
-          <button type="button" class="location-dropdown-toggle" id="transactionValueToggle" aria-label="Show options" aria-expanded="false">▾</button>
-          <div class="location-options generic-filter-options report-value-options" id="transactionValueOptions" role="listbox" hidden></div>
+          <input id="transactionFamily" type="text" placeholder="Select Job Family" autocomplete="off" aria-autocomplete="list" aria-controls="transactionFamilyOptions" aria-expanded="false" role="combobox">
+          <button type="button" class="location-dropdown-toggle" id="transactionFamilyToggle" aria-label="Show job families" aria-expanded="false">▾</button>
+          <div class="location-options generic-filter-options report-value-options" id="transactionFamilyOptions" role="listbox" hidden></div>
+        </div>
+      </label>
+      <label>Job Title
+        <div class="location-input-wrap report-value-wrap">
+          <input id="transactionRole" type="text" placeholder="Select Job Title" autocomplete="off" aria-autocomplete="list" aria-controls="transactionRoleOptions" aria-expanded="false" role="combobox" disabled>
+          <button type="button" class="location-dropdown-toggle" id="transactionRoleToggle" aria-label="Show job titles" aria-expanded="false" disabled>▾</button>
+          <div class="location-options generic-filter-options report-value-options" id="transactionRoleOptions" role="listbox" hidden></div>
         </div>
       </label>
       <label>Start Date<input id="transactionStart" type="date"></label>
@@ -516,10 +537,10 @@
                     <button type="button" id="jobDetailsClose" class="job-details-close" aria-label="Close">×</button>
                 </header>
                 <div class="job-details-content">
-                    <section><h3>Job overview</h3><div id="jobDetailsMeta" class="job-details-facts"></div></section>
+                    <section id="jobDetailsOverview"><h3>Job overview</h3><div id="jobDetailsMeta" class="job-details-facts"></div></section>
                     <section class="job-description-section"><h3>Job description &amp; requirements</h3><div id="jobDetailsDescription" class="job-details-description">Description not provided by source.</div></section>
                 </div>
-                <footer class="job-details-footer"><span>Details are based on the information supplied by the job source.</span><div><button type="button" id="jobDetailsExport" class="job-details-export">Export / Print</button><a id="jobDetailsApplyLink" class="job-details-apply" href="#" target="_blank" rel="noopener noreferrer" hidden>Open original listing ↗</a></div></footer>
+                <footer id="jobDetailsFooter" class="job-details-footer"><span>Details are based on the information supplied by the job source.</span><div><button type="button" id="jobDetailsExport" class="job-details-export">Export / Print</button><a id="jobDetailsApplyLink" class="job-details-apply" href="#" target="_blank" rel="noopener noreferrer" hidden>Open original listing ↗</a></div></footer>
             </article>
         </section>
 

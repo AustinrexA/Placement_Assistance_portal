@@ -2949,6 +2949,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible
 .job-details-close { flex: 0 0 auto; width: 36px; height: 36px; border: 1px solid #d8e1ea; border-radius: 8px; background: #fff; color: #42566c; font-size: 25px; line-height: 1; cursor: pointer; }
 .job-details-content { padding: 18px 30px 22px; overflow-y: auto; }
 .job-details-content section + section { margin-top: 18px; }
+.job-details-modal.user-job-details .job-description-section { margin-top: 0; }
 .job-details-content h3 { margin: 0 0 10px; color: #172b46; font-size: 16px; }
 .job-details-facts { display: flex; flex-wrap: wrap; gap: 8px 18px; padding: 0 0 14px; border-bottom: 1px solid #e8edf2; }
 .job-detail-fact { display: flex; align-items: baseline; gap: 6px; min-width: 0; max-width: 100%; padding: 0; border: 0; background: transparent; }
@@ -3883,6 +3884,22 @@ body[data-user-role="user"] .admin-job-link-column { display: none !important; }
 @media(max-width:900px){.admin-analytics-grid{grid-template-columns:1fr}.analytics-donut-layout{justify-content:flex-start}}
 @media(max-width:480px){.analytics-donut-layout{gap:14px}.analytics-donut{width:115px;height:115px;flex-basis:115px}.analytics-donut:before{inset:20px}.analytics-legend-row{font-size:11px}.analytics-bar-row{grid-template-columns:75px minmax(20px,1fr) 42px;gap:6px}}
 
+
+/* Full-width job-family trend chart beneath company and location distributions */
+.job-family-trend-card{margin:0 0 20px;border:1px solid #f3d3b7;box-shadow:0 4px 16px rgba(231,117,28,.08);border-radius:16px;padding:16px 20px}
+.job-family-trend-head{align-items:center;flex-wrap:wrap;margin-bottom:8px}
+.job-family-trend-title{display:flex;align-items:center;gap:12px;min-width:0}
+.job-family-trend-icon{display:grid;place-items:center;width:28px;height:28px;border-radius:8px;background:#fff1e5;color:#f58220;font-size:20px}
+.job-family-trend-title h3{margin:0;color:#142d50;font-size:15px;font-weight:750}
+.job-family-trend-title p{margin:4px 0 0;color:#718198;font-size:11px}
+.job-family-trend-summary{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.job-family-trend-summary>span{display:inline-flex;align-items:center;padding:6px 11px;border-radius:18px;background:#f3f5f8;color:#243b5b;font-size:11px;font-weight:700;white-space:nowrap}
+.job-family-trend-summary>span:nth-child(2){background:#fff0e3;color:#a95712}
+.job-family-trend-chart{width:100%;min-height:270px;overflow:hidden}
+.job-family-svg-scroll{width:100%;overflow-x:auto;overflow-y:hidden;padding:2px 0 0;scrollbar-width:thin}
+.job-family-svg-scroll svg{display:block;max-width:none}
+@media(max-width:700px){.job-family-trend-head{align-items:flex-start}.job-family-trend-summary{justify-content:flex-start;width:100%}.job-family-trend-card{padding:14px 12px}.job-family-trend-chart{min-height:250px}}
+
 /* Transaction-style Reports page */
 .transactions-heading{padding:8px 0 22px;border-bottom:1px solid #e3e7ed;margin-bottom:22px}
 .transactions-heading h2{font-size:30px;color:#202b3d;margin:0}
@@ -4527,5 +4544,27 @@ body[data-user-role="user"] .admin-job-link-column { display: none !important; }
         min-height: 38px !important;
         padding: 7px 10px !important;
         font-size: 13px !important;
+    }
+}
+
+/* Reports: give the Job Family dropdown a little more room for long names. */
+#reportsPage #transactionFamilyOptions {
+    width: 360px !important;
+    min-width: 360px !important;
+    max-width: min(420px, calc(100vw - 40px)) !important;
+    box-sizing: border-box !important;
+    overflow-x: hidden !important;
+}
+
+#reportsPage #transactionFamilyOptions .location-option {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.4;
+}
+
+@media (max-width: 480px) {
+    #reportsPage #transactionFamilyOptions {
+        width: min(360px, calc(100vw - 40px)) !important;
+        min-width: min(360px, calc(100vw - 40px)) !important;
     }
 }
